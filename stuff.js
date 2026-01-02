@@ -7,7 +7,7 @@ async function onLoad(){
     mainScreen.style.display = "none";
     
 
-    const f = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=Memorial_Lobby&prop=links&format=json");
+    const f = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=Memorial_Lobby&prop=links&format=json&origin=*");
     const memorialLobbyWikiJson = (await (f.text()));
 
     var studentNamesWithMemorialLobby = []
@@ -41,7 +41,7 @@ async function onLoad(){
 
     //Get & parse character wiki page
     console.log("Fetching character wiki page...");
-    var characterWikiPage = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=" + randomCharacterName + "&prop=text&format=json");
+    var characterWikiPage = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=" + randomCharacterName + "&prop=text&format=json&origin=*");
     console.log("Getting text from wiki page...");
     var characterWikiText = await (characterWikiPage.text());
     console.log("Parsing wiki page text...");
