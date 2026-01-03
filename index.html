@@ -11,11 +11,20 @@
     
 
     <body onload="onLoad()">
-        <div id="SiteLoading">
+        <div id="SiteLoading" class="mainImageContainer">
             <img id="loadingImage" src="LoadingImage_05_en.png" alt="Loading image" height="100%" width="100%">
+            <p id="loadingText" class="loadingText">Site is loading...</p>
         </div>
         <div id="SiteMain" class="mainImageContainer">
-            <img id="mainMemorialLobbyImage" class="mainImageImage" src="https://static.wikitide.net/bluearchivewiki/6/6d/Memorial_Lobby_Hoshino_%28Battle%29.png" alt="Hoshino" height="100%" width="100%">
+            <div>
+               <img id="mainMemorialLobbyImage" class="mainImageImage" src="https://static.wikitide.net/bluearchivewiki/6/6d/Memorial_Lobby_Hoshino_%28Battle%29.png" alt="Hoshino" height="100%" width="100%">
+            </div>
+            <div class="inputBoxDiv">
+                <input id="inputBox" class="inputBoxField" type="text" placeholder="Enter student name..." autocomplete="off" oninput="onInputFieldChanged()">
+                <ul id="inputBoxOptionsContainer" class="inputBoxOptionsContainer">
+                    <!--    <button class ="inputBoxOptionsOption">I'm goonngiining</button>    -->
+                </ul>
+            </div>
         </div>
     </body>
 </html>

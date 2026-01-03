@@ -1,19 +1,34 @@
+var studentNamesWithMemorialLobby = [];
+var studentNameButtons = []; 
+
+var correctStudentThisRound;
+
+//Elements
+var loadingScreen;
+var mainScreen;
+var mainImage;
+var inputBox;
+var loadingImage;
+var loadingText;
+
 async function onLoad(){
-    var loadingScreen = document.getElementById("SiteLoading");
-    var mainScreen = document.getElementById("SiteMain");
-    var mainImage = document.getElementById("mainMemorialLobbyImage");
+    loadingScreen = document.getElementById("SiteLoading");
+    mainScreen = document.getElementById("SiteMain");
+    mainImage = document.getElementById("mainMemorialLobbyImage");
+    inputBox = document.getElementById("inputBox");
+    loadingImage = document.getElementById("loadingImage");
+    loadingText = document.getElementById("loadingText");
+
+    loadingImage.src = "LoadingImage_05_en.png";
+    loadingImage.alt = "Loading image";
 
     loadingScreen.style.display = "block";
     mainScreen.style.display = "none";
     
-
     const f = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=Memorial_Lobby&prop=links&format=json&origin=*");
     const memorialLobbyWikiJson = (await (f.text()));
 
-    var studentNamesWithMemorialLobby = []
-
-    //console.log(memorialLobbyWikiJson);
-
+    
     //Parse memorial lobby wiki page, put names of students with memorial lobbies into studentNamesWithMemorialLobby array
     var stringToFind = `{"ns":0,"exists":"","*":"`;
     var parsingText = memorialLobbyWikiJson;
@@ -21,7 +36,9 @@ async function onLoad(){
     while(characterIndex != -1){
         parsingText = parsingText.substring(characterIndex + stringToFind.length);
         var characterNameLength = parsingText.indexOf(`"`);
-        studentNamesWithMemorialLobby.push(parsingText.substring(0, characterNameLength));
+        var characterName = parsingText.substring(0, characterNameLength);
+        characterName = characterName.replace(`\\uff0a`, `＊`);
+        studentNamesWithMemorialLobby.push(characterName);
         parsingText = parsingText.substring(characterNameLength);
         characterIndex = parsingText.indexOf(stringToFind);
     }
@@ -31,16 +48,80 @@ async function onLoad(){
 
     console.log(studentNamesWithMemorialLobby);
 
+    //Create buttons for each character that exists
+    var buttonContainer = document.getElementById("inputBoxOptionsContainer");
+    studentNamesWithMemorialLobby.forEach(studentName => {
+        var button = document.createElement("button");
+        button.classList.add("inputBoxOptionsOption");
+        button.textContent = studentName;
+        buttonContainer.appendChild(button);
+        var buttonArray = [button, studentName];
+        button.addEventListener("click", (event) => {
+            guessCharacter(buttonArray);
+        })
+        studentNameButtons.push(buttonArray);
+    });
+    onInputFieldChanged();
+
+    await initializeGame();
+
+}
+
+var prevInput = "";
+function onInputFieldChanged(){
+    var input = inputBox.value;
+    var lowerInput = input.toLowerCase();
+    if(input == ""){
+        studentNameButtons.forEach(nameButtonArray => {
+            nameButtonArray[0].style.display = "none";
+        });
+    }else{
+        var inputAddedCharacter = (input.length - prevInput.length) > 0;
+        studentNameButtons.forEach(nameButtonArray => {
+            var button = nameButtonArray[0];
+            if(inputAddedCharacter && button.style.display == "none" && prevInput != ""){return;}
+            var studentName = nameButtonArray[1];
+            var inputMatchIndex = studentName.toLowerCase().indexOf(lowerInput);
+            button.innerHTML = studentName.substring(0, inputMatchIndex) + "<b>" + studentName.substring(inputMatchIndex, inputMatchIndex + input.length) + "</b>" + studentName.substring(inputMatchIndex + input.length);
+            if(inputMatchIndex != -1){
+                button.style.display = "block";
+            }else{
+                button.style.display = "none";
+            }
+        })
+    }
+
+    prevInput = input;
+}
+
+async function guessCharacter(characterButtonArray){
+    var loadingToDisplay;
+    if(characterButtonArray[1] == correctStudentThisRound){
+        loadingToDisplay = ["GuessCorrect.png", "Correct Guess", ""]
+    }else{
+        loadingToDisplay = ["GuessWrong.png", "Wrong Guess", "Previous lobby: " + correctStudentThisRound];
+    }
+    loadingImage.src = loadingToDisplay[0];
+    loadingImage.alt = loadingToDisplay[1];
+    loadingText.innerHTML = loadingToDisplay[2];
+    await initializeGame();
+}
+
+async function initializeGame(){
+
+    loadingScreen.style.display = "block";
+    mainScreen.style.display = "none";
+
     //Pick random character, fix their name string for getting memorial lobby
     var randomCharacterIndex = Math.floor(Math.random() * studentNamesWithMemorialLobby.length);
     //randomCharacterIndex = 116;
     var randomCharacterName = studentNamesWithMemorialLobby[randomCharacterIndex];
+    correctStudentThisRound = randomCharacterName;
     randomCharacterName = randomCharacterName.replace(/ /g, "_");
-    randomCharacterName = randomCharacterName.replace(`\\uff0a`, `＊`)
     console.log(randomCharacterIndex + " - " + randomCharacterName);
 
     var wordsInName = randomCharacterName.split(/[^a-zA-Z]+/).filter(Boolean);
-
+ 
     //Get & parse character wiki page
     console.log("Fetching character wiki page...");
     var characterWikiPage = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=" + randomCharacterName + "&prop=text&format=json&origin=*");
@@ -69,9 +150,8 @@ async function onLoad(){
     }
     if(memorialLobbyImageLink == null){
         console.log("No memorial lobby image found!")
-        document.getElementById("loadingImage").src = "LoadingImage_49_En.png";
-        document.getElementById("loadingImage").alt = "Loading failed";
-        return;
+        await initializeGame();
+        return false;
     }
     memorialLobbyImageLink = "https://" + memorialLobbyImageLink.substring(0, memorialLobbyImageLink.indexOf("/thumb")) + memorialLobbyImageLink.substring(memorialLobbyImageLink.indexOf("/thumb") + "/thumb".length);
     console.log(memorialLobbyImageLink);
@@ -79,6 +159,10 @@ async function onLoad(){
     mainImage.src = memorialLobbyImageLink;
     mainImage.alt = randomCharacterName;
 
+    inputBox.value = "";
+    onInputFieldChanged();
+
     loadingScreen.style.display = "none";
     mainScreen.style.display = "block";
+    return true;
 }
