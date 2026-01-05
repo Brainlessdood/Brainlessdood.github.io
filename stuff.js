@@ -1,6 +1,11 @@
 var studentNamesWithMemorialLobby = [];
 var studentNameButtons = []; 
 
+var guessNameLabels = [];
+var guessedButtonIndexes = [];
+
+var nextRoundPromise;
+
 var correctStudentThisRound;
 
 var guesses = 0;
@@ -19,6 +24,10 @@ async function onLoad(){
     app.inputBox = document.getElementById("inputBox");
     app.loadingImage = document.getElementById("loadingImage");
     app.loadingText = document.getElementById("loadingText");   
+    app.gameButtons = document.getElementById("buttonsGameOngoing");
+    app.endButtons = document.getElementById("buttonsGameOver");
+    app.showMoreButton = document.getElementById("showMoreButton");
+    app.sideBar = document.getElementById("sideBar");
 
     app.loadingImage.src = "LoadingImage_05_en.png";
     app.loadingImage.alt = "Loading image";
@@ -64,6 +73,8 @@ async function onLoad(){
     });
     onInputFieldChanged();
 
+    nextRoundPromise = getPromiseForRound();
+
     await initializeGame();
 
 }
@@ -104,67 +115,98 @@ async function guessCharacter(characterButtonArray){
         loadingToDisplay = ["GuessWrong.png", "Wrong Guess", "Previous lobby: " + correctStudentThisRound];
         if(guesses < maxGuesses){
             guesses += 1;
+            if(guesses >= maxGuesses){
+                app.showMoreButton.disabled = true;
+            }
             resizeMainImage();
             return;
         }
     }
-    app.loadingImage.src = loadingToDisplay[0];
-    app.loadingImage.alt = loadingToDisplay[1];
-    app.loadingText.innerHTML = loadingToDisplay[2];
-    await initializeGame();
+    endGame();
+}
+function endGame(){
+    let finalGuesses = guesses;
+    guesses = maxGuesses;
+    app.gameButtons.style = "display:none";
+    app.endButtons.style = "display:flex";
+    app.inputBox.disabled = true;
+    app.inputBox.value = ""
+    onInputFieldChanged();
+    resizeMainImage();
 }
 
+
+//Returns a promise, which returns an array: [character Index, character Name, image Link] (representing a round)
+//This exists so that rounds can be "loaded" in advance. Fetches for wiki pages can be done asyncronously while the player is playing the game and awaited to avoid race conditions when the round starts.
+function getPromiseForRound(){    
+    //Pick random character, fix their name string for getting memorial lobby
+    let randomCharacterIndex = Math.floor(Math.random() * studentNamesWithMemorialLobby.length);
+    let randomCharacterName = studentNamesWithMemorialLobby[randomCharacterIndex];
+    let adjustedName = randomCharacterName.replace(/ /g, "_");
+    console.log(randomCharacterIndex + " - " + adjustedName);
+
+    let wordsInName = adjustedName.split(/[^a-zA-Z]+/).filter(Boolean);
+ 
+    console.log("Fetching character wiki page...");
+
+    //Fetch is a promise. Fetch wiki page
+    let promise = fetch("https://bluearchive.wiki/w/api.php?action=parse&page=" + adjustedName + "&prop=text&format=json&origin=*")
+    .then(wikiPage => wikiPage.text())  //Get wiki page text
+    .then(wikiText => {
+        //Parse wiki page text, looking for "Memorial_Lobby_CharacterName" in an image link
+        const linkStart = "static.wikitide.net/bluearchivewiki/thumb";
+        let linkStartIndex = wikiText.indexOf(linkStart);
+        let imageLink;
+        while(linkStartIndex != -1){
+            let link = wikiText.substring(wikiText.indexOf(linkStart));
+            let linkEndIndex = linkStart.length + link.substring(linkStart.length).indexOf(".") + 4;
+            link = link.substring(0, linkEndIndex);
+            wikiText = wikiText.substring(linkStartIndex + linkEndIndex);
+            linkStartIndex = wikiText.indexOf(linkStart);
+            //Memorial lobby image found, ensure that it is not that of an alter for the same character
+            if(link.indexOf("Memorial_Lobby") != -1){
+                let wordsInNameThatDontAppearInLink = wordsInName.filter(function(value){return link.indexOf(value) == -1;}).length;
+                if(wordsInNameThatDontAppearInLink > 0){continue;}
+                let wordsInLink = link.substring(link.indexOf("Memorial")).split(/[^a-zA-Z]+/).filter(function(value){return Boolean(value) && ["Memorial", "Lobby", "png", "jpg"].indexOf(value) == -1});
+                let wordsInLinkThatDontAppearInName = wordsInLink.filter(function(value){return !wordsInName.includes(value);}).length;
+                if(wordsInLinkThatDontAppearInName > 0){continue;}
+                imageLink = link;
+                break;
+            }
+        }
+        //Retry this function in case a memorial lobby is not found on the character's wiki page.
+        if(imageLink == null){
+            console.log("No memorial lobby image found!")
+            return getPromiseForRound();
+        }
+        imageLink = "https://" + imageLink.substring(0, imageLink.indexOf("/thumb")) + imageLink.substring(imageLink.indexOf("/thumb") + "/thumb".length);
+        return [randomCharacterIndex, randomCharacterName, imageLink];
+    })
+
+    return promise;
+}
+
+//Starts a round.
 async function initializeGame(){
 
     app.loadingScreen.style.display = "block";
     app.mainScreen.style.display = "none";
     app.mainImage.src = "";
 
-    //Pick random character, fix their name string for getting memorial lobby
-    let randomCharacterIndex = Math.floor(Math.random() * studentNamesWithMemorialLobby.length);
-    //randomCharacterIndex = 116;
-    let randomCharacterName = studentNamesWithMemorialLobby[randomCharacterIndex];
-    correctStudentThisRound = randomCharacterName;
-    randomCharacterName = randomCharacterName.replace(/ /g, "_");
-    console.log(randomCharacterIndex + " - " + randomCharacterName);
+    app.gameButtons.style = "display:flex";
+    app.endButtons.style = "display:none";
 
-    let wordsInName = randomCharacterName.split(/[^a-zA-Z]+/).filter(Boolean);
- 
-    //Get & parse character wiki page
-    console.log("Fetching character wiki page...");
-    let characterWikiPage = await fetch("https://bluearchive.wiki/w/api.php?action=parse&page=" + randomCharacterName + "&prop=text&format=json&origin=*");
-    let characterWikiText = await (characterWikiPage.text());
-    //console.log(characterWikiText);
-    parsingText = characterWikiText;
-    const linkStart = "static.wikitide.net/bluearchivewiki/thumb";
-    let linkStartIndex = parsingText.indexOf(linkStart);
-    let memorialLobbyImageLink;
-    //Parse character wiki page, looking for memorial lobby link
-    while(linkStartIndex != -1){
-        let link = parsingText.substring(parsingText.indexOf(linkStart));
-        let linkEndIndex = linkStart.length + link.substring(linkStart.length).indexOf(".") + 4;
-        link = link.substring(0, linkEndIndex);
-        parsingText = parsingText.substring(linkStartIndex + linkEndIndex);
-        linkStartIndex = parsingText.indexOf(linkStart);
-        if(link.indexOf("Memorial_Lobby") != -1){
-            let wordsInNameThatDontAppearInLink = wordsInName.filter(function(value){return link.indexOf(value) == -1;}).length;
-            if(wordsInNameThatDontAppearInLink > 0){continue;}
-            let wordsInLink = link.substring(link.indexOf("Memorial")).split(/[^a-zA-Z]+/).filter(function(value){return Boolean(value) && ["Memorial", "Lobby", "png", "jpg"].indexOf(value) == -1});
-            let wordsInLinkThatDontAppearInName = wordsInLink.filter(function(value){return !wordsInName.includes(value);}).length;
-            if(wordsInLinkThatDontAppearInName > 0){continue;}
-            memorialLobbyImageLink = link;
-            break;
-        }
-    }
-    if(memorialLobbyImageLink == null){
-        console.log("No memorial lobby image found!")
-        await initializeGame();
-        return false;
-    }
-    memorialLobbyImageLink = "https://" + memorialLobbyImageLink.substring(0, memorialLobbyImageLink.indexOf("/thumb")) + memorialLobbyImageLink.substring(memorialLobbyImageLink.indexOf("/thumb") + "/thumb".length);
+    updateGuessedButtonIndexes([]);
+    
+    app.showMoreButton.disabled = false;
+    app.inputBox.disabled = false;
 
-    app.mainImage.src = memorialLobbyImageLink;
-    app.mainImage.alt = randomCharacterName;
+    let selectedStudentData = await nextRoundPromise;
+    nextRoundPromise = getPromiseForRound();
+    correctStudentThisRound = selectedStudentData[1];
+
+    app.mainImage.src = selectedStudentData[2];
+    app.mainImage.alt = "";
 
     app.mainImage.style = "opacity=0";
 
@@ -181,12 +223,19 @@ async function initializeGame(){
     resizeMainImage();
 
     onInputFieldChanged();
+
     return true;
+}
+
+function updateGuessedButtonIndexes(guessedButtons){
+
+    guessedButtonIndexes = guessedButtons;
 }
 
 //Zooms in the main image based on wrong guesses.
 function resizeMainImage(){
-    let percentageToFailure = guesses/maxGuesses;
+    if(app.mainImage == null){return;}
+    let percentageToFailure = Math.min(guesses/maxGuesses, 1);
     let scale = startingScale - ((startingScale - 1) * Math.pow(percentageToFailure, 0.25));
     let zoomPosition = [];
     let imageDimensions = [app.mainImage.clientWidth, app.mainImage.clientHeight];
