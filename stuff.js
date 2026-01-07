@@ -2,16 +2,17 @@ var studentNamesWithMemorialLobby = [];
 var studentNameButtons = []; 
 
 var guessNameLabels = [];
-var guessedButtonIndexes = [];
 
-var nextRoundPromise;
+const maxRoundsToAttemptToQueue = 3;
+let nextRoundPromises = [];
 
 var correctStudentThisRound;
+let guessedCharacters = [];
 
-var guesses = 0;
+var guesses = 1;
 var zoomStartPosition;
 
-const maxGuesses = 3;
+const maxGuesses = 4;
 const startingScale = 30;
 
 //Elements
@@ -28,6 +29,12 @@ async function onLoad(){
     app.endButtons = document.getElementById("buttonsGameOver");
     app.showMoreButton = document.getElementById("showMoreButton");
     app.sideBar = document.getElementById("sideBar");
+
+    app.characterGuessList = document.getElementById("characterGuessList");
+    app.guessCounter = document.getElementById("guessCounter");
+    app.correctStudentName = document.getElementById("correctStudentName");
+    app.correctnessLabel = document.getElementById("correctnessLabel");
+
 
     app.loadingImage.src = "LoadingImage_05_en.png";
     app.loadingImage.alt = "Loading image";
@@ -73,7 +80,9 @@ async function onLoad(){
     });
     onInputFieldChanged();
 
-    nextRoundPromise = getPromiseForRound();
+    for(let i = 0; i < maxRoundsToAttemptToQueue; i ++){
+        nextRoundPromises.push(getPromiseForRound());
+    }
 
     await initializeGame();
 
@@ -82,55 +91,88 @@ async function onLoad(){
 var prevInput = "";
 function onInputFieldChanged(){
     let input = inputBox.value;
+    updateInputField();
+    prevInput = input;
+}
+function hideInputField(){
+    studentNameButtons.forEach(nameButtonArray => {
+        nameButtonArray[0].style.display = "none";
+    });
+}
+function updateInputField(){
+    let input = inputBox.value;
     let lowerInput = input.toLowerCase();
     if(input == ""){
-        studentNameButtons.forEach(nameButtonArray => {
-            nameButtonArray[0].style.display = "none";
-        });
+        hideInputField();
     }else{
         let inputAddedCharacter = (input.length - prevInput.length) > 0;
+        let buttonNamesToExclude = [...guessedCharacters];
         studentNameButtons.forEach(nameButtonArray => {
             let button = nameButtonArray[0];
             if(inputAddedCharacter && button.style.display == "none" && prevInput != ""){return;}
             let studentName = nameButtonArray[1];
+            if(buttonNamesToExclude.includes(studentName)){
+                buttonNamesToExclude.filter((value) => {return value != studentName;});
+                button.style.display = "none";
+                return;
+            }
             let inputMatchIndex = studentName.toLowerCase().indexOf(lowerInput);
             button.innerHTML = studentName.substring(0, inputMatchIndex) + "<b>" + studentName.substring(inputMatchIndex, inputMatchIndex + input.length) + "</b>" + studentName.substring(inputMatchIndex + input.length);
             if(inputMatchIndex != -1){
                 button.style.display = "block";
+                if(prevFocusedButton = null){
+                    button.focus();
+                }
+                prevFocusedButton = button;
             }else{
                 button.style.display = "none";
             }
         })
     }
-
-    prevInput = input;
 }
 
 async function guessCharacter(characterButtonArray){
     app.inputBox.value = "";
-    let loadingToDisplay;
-    if(characterButtonArray[1] == correctStudentThisRound){
-        loadingToDisplay = ["GuessCorrect.png", "Correct Guess", ""]
-    }else{
-        loadingToDisplay = ["GuessWrong.png", "Wrong Guess", "Previous lobby: " + correctStudentThisRound];
-        if(guesses < maxGuesses){
-            guesses += 1;
-            if(guesses >= maxGuesses){
-                app.showMoreButton.disabled = true;
-            }
-            resizeMainImage();
-            return;
+
+    let guessedCorrectly = characterButtonArray && characterButtonArray[1] == correctStudentThisRound;
+    if(!guessedCorrectly && guesses < maxGuesses){
+        guesses += 1;
+        if(guesses >= maxGuesses){
+            app.showMoreButton.disabled = true;
         }
+        resizeMainImage();
+        app.guessCounter.innerHTML = "Guesses: " + guesses + "/" + maxGuesses;
+
+        if(characterButtonArray){
+            characterButtonArray[0].style.display = "none";
+
+            let p = document.createElement("option");
+            p.classList.add("characterGuessListItem");
+            p.classList.add("sideBarText2");
+            p.innerHTML = characterButtonArray[1];
+            app.characterGuessList.appendChild(p);
+
+            guessedCharacters.push(characterButtonArray[1]);
+        }
+
+        return;
     }
-    endGame();
+    endGame(guessedCorrectly);
 }
-function endGame(){
+function endGame(won){
     let finalGuesses = guesses;
     guesses = maxGuesses;
     app.gameButtons.style = "display:none";
     app.endButtons.style = "display:flex";
     app.inputBox.disabled = true;
     app.inputBox.value = ""
+    if(won){
+        app.correctnessLabel.innerHTML = "You won in " + finalGuesses + " guesses!";
+    }else{
+        app.correctnessLabel.innerHTML = "You didn't guess the character :("
+    }
+    correctStudentName.style.display = "block";
+    correctnessLabel.style.display ="block"
     onInputFieldChanged();
     resizeMainImage();
 }
@@ -143,11 +185,12 @@ function getPromiseForRound(){
     let randomCharacterIndex = Math.floor(Math.random() * studentNamesWithMemorialLobby.length);
     let randomCharacterName = studentNamesWithMemorialLobby[randomCharacterIndex];
     let adjustedName = randomCharacterName.replace(/ /g, "_");
-    console.log(randomCharacterIndex + " - " + adjustedName);
+    console.log("Getting memorial lobby for " + randomCharacterName + "...");
 
     let wordsInName = adjustedName.split(/[^a-zA-Z]+/).filter(Boolean);
  
-    console.log("Fetching character wiki page...");
+    //console.log("Fetching character wiki page...");
+
 
     //Fetch is a promise. Fetch wiki page
     let promise = fetch("https://bluearchive.wiki/w/api.php?action=parse&page=" + adjustedName + "&prop=text&format=json&origin=*")
@@ -176,12 +219,21 @@ function getPromiseForRound(){
         }
         //Retry this function in case a memorial lobby is not found on the character's wiki page.
         if(imageLink == null){
-            console.log("No memorial lobby image found!")
+            console.log(randomCharacterName + " doesn't have a memorial lobby on their wiki!");
             return getPromiseForRound();
         }
         imageLink = "https://" + imageLink.substring(0, imageLink.indexOf("/thumb")) + imageLink.substring(imageLink.indexOf("/thumb") + "/thumb".length);
+        console.log("Got memorial lobby for " + randomCharacterName);
+
         return [randomCharacterIndex, randomCharacterName, imageLink];
-    })
+    }).then(dataArray => {
+        //Load the image in advance
+        return new Promise((resolve) => {
+            let img = new Image();
+            img.src = dataArray[2];
+            img.onload = () => {return resolve(dataArray)};
+        });
+    });
 
     return promise;
 }
@@ -195,15 +247,21 @@ async function initializeGame(){
 
     app.gameButtons.style = "display:flex";
     app.endButtons.style = "display:none";
-
-    updateGuessedButtonIndexes([]);
     
     app.showMoreButton.disabled = false;
     app.inputBox.disabled = false;
 
-    let selectedStudentData = await nextRoundPromise;
-    nextRoundPromise = getPromiseForRound();
+    let selectedStudentData = await nextRoundPromises[0];
     correctStudentThisRound = selectedStudentData[1];
+    guessedCharacters = [];
+
+    app.correctStudentName.innerHTML = "Character: " + correctStudentThisRound;
+    app.correctStudentName.style.display = "none";
+    app.correctnessLabel.style.display = "none";
+
+    while(app.characterGuessList.hasChildNodes()){
+        app.characterGuessList.removeChild(app.characterGuessList.firstChild)
+    }
 
     app.mainImage.src = selectedStudentData[2];
     app.mainImage.alt = "";
@@ -213,7 +271,9 @@ async function initializeGame(){
     app.loadingScreen.style.display = "none";
     app.mainScreen.style.display = "block";
 
-    guesses = 0;
+    guesses = 1;
+    app.guessCounter.innerHTML = "Guesses: " + guesses + "/" + maxGuesses;
+
     zoomStartPosition = [];
     for(let i = 0; i < 2; i ++){
         zoomStartPosition[i] = ((Math.random() - 0.5)/0.5);
@@ -224,12 +284,10 @@ async function initializeGame(){
 
     onInputFieldChanged();
 
+    nextRoundPromises.shift();
+    nextRoundPromises.push(getPromiseForRound());
+
     return true;
-}
-
-function updateGuessedButtonIndexes(guessedButtons){
-
-    guessedButtonIndexes = guessedButtons;
 }
 
 //Zooms in the main image based on wrong guesses.
@@ -248,3 +306,9 @@ function resizeMainImage(){
 }
 
 window.onresize = resizeMainImage;
+
+
+document.addEventListener("click", (element) =>{
+    if(element && element.target.closest("button, input")){return;}
+    hideInputField();
+})
