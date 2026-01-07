@@ -307,7 +307,7 @@ function resizeMainImage(){
 
 window.onresize = resizeMainImage;
 
-
+//For detecting stray clicks
 document.addEventListener("click", (element) =>{
     if(element && element.target.closest("button, input")){return;}
     hideInputField();
